@@ -1,0 +1,124 @@
+package com.hzcard.adviser
+import org.apache.kafka.common.serialization.StringDeserializer
+
+import org.apache.spark.SparkConf
+import org.apache.spark.SparkContext
+import org.elasticsearch.spark._
+import org.apache.spark.streaming.StreamingContext
+import org.apache.spark.streaming.Seconds
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.sql.SQLContext
+import org.apache.spark.streaming.kafka010.KafkaUtils
+import org.apache.spark.streaming.kafka010.LocationStrategies.PreferConsistent
+import org.apache.spark.streaming.kafka010.ConsumerStrategies.Subscribe
+import org.apache.spark.streaming.kafka010.HasOffsetRanges
+import org.apache.spark.streaming.kafka010.OffsetRange
+import org.apache.spark.TaskContext
+import org.apache.spark.rdd.RDD
+import scala.collection.mutable.ArrayOps
+import java.text.SimpleDateFormat
+import java.sql.Timestamp
+import java.util.Date
+import scala.collection.mutable.ArrayBuffer
+import scala.beans.BeanProperty
+import org.elasticsearch.spark.rdd._
+import com.fasterxml.jackson.databind.ObjectMapper
+import scala.util.Sorting
+import java.util.UUID
+import com.hzcard.adviser.Main.BusinessRecoder
+import com.hzcard.adviser.Main.OrderedEventEntity
+import java.util.NoSuchElementException
+
+object Main {
+
+  var oldQueryString = ""
+
+  def apply(sc: SparkContext) = new Main(sc);
+
+  abstract class EventComponent(requesResponseKey: String) extends Serializable {
+    def getRequesResponseKey = requesResponseKey
+  }
+  case class RequestStart(requesResponseKey: String, startTime: java.util.Date, method: String, url: String) extends com.hzcard.adviser.Main.EventComponent(requesResponseKey) //请求开始
+  case class EventID(requesResponseKey: String, id: String) extends com.hzcard.adviser.Main.EventComponent(requesResponseKey) //事件ID
+  case class EventCode(requesResponseKey: String, code: String) extends com.hzcard.adviser.Main.EventComponent(requesResponseKey) //事件类型
+  case class EventType(requesResponseKey: String, eventType: String) extends com.hzcard.adviser.Main.EventComponent(requesResponseKey) //事件类型
+  case class EventTypePlatform(requesResponseKey: String, platForm: String) extends com.hzcard.adviser.Main.EventComponent(requesResponseKey) //事件平台
+  case class EventRequestSequence(requesResponseKey: String, sequence: String) extends com.hzcard.adviser.Main.EventComponent(requesResponseKey) //事件请求序列
+  case class EventHttpBody(requesResponseKey: String, time: java.util.Date, body: String) extends com.hzcard.adviser.Main.EventComponent(requesResponseKey) //请求体、返回体Json
+  case class RequestEnd(requesResponseKey: String, requestEndTime: java.util.Date) extends com.hzcard.adviser.Main.EventComponent(requesResponseKey) //请求结束
+  case class ResponseStart(requesResponseKey: String, durition: Int, httpStatus: String) extends com.hzcard.adviser.Main.EventComponent(requesResponseKey) //请求返回持续时间、状态
+  case class ResponseEnd(requesResponseKey: String, endTime: java.util.Date) extends com.hzcard.adviser.Main.EventComponent(requesResponseKey) //请求返回
+  case class NoVialbleLog(requesResponseKey: String) extends com.hzcard.adviser.Main.EventComponent(requesResponseKey)
+  class OrderedEventEntity(val even: EventEntity) extends Ordered[EventEntity] {
+    def compare(that: EventEntity) = even.startTime.compareTo(that.startTime)
+  }
+  case class BusinessRecoder(id: String, recordtime: Date, business: String)
+  
+}
+
+class Main(val sc: SparkContext) {
+
+  implicit def eventEntityToOrdered(p: EventEntity) = new OrderedEventEntity(p)
+  def compute ={
+    val myVectorAcc = new EventAccumulatorV2
+    sc.register(myVectorAcc)
+    val dealedRecodRdd = sc.esRDD("feiginclient/dealedrecod", "?q=business:eventFirstStage");
+    lazy val businessId = {
+      if (dealedRecodRdd.isEmpty())
+        None
+      else
+        Some(dealedRecodRdd.collect().take(1)(0)._1)
+    }
+    lazy val recordTime = {
+      dealedRecodRdd.collect().take(1)(0)._2
+    }
+    val queryString = {
+      if (dealedRecodRdd.isEmpty() && !recordTime.get("recordtime").isEmpty)
+        "{\"range\" : {\"timestamp\" : {\"gt\" : \"" + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(recordTime.get("recordtime").get) + "\",\"format\":\"yyyy-MM-dd HH:mm:ss.SSS\",\"time_zone\": \"+08:00\"}}}"
+      else
+        "{\"query\": {\"match_all\": {}}}"
+    }
+    val rdd = sc.esRDD("feiginclient/new", Map("es.query" -> queryString)).map(_._2)
+    try {
+      val eventRdd = rdd.map(x => {
+        val startTime = x.get("timestamp").get.asInstanceOf[java.util.Date] //时间
+        val requestResponseKey = x.get("requestResponseKey").get.asInstanceOf[String] //线程
+        val logContent = { //日志体
+          x.get("logContent").getOrElse(null) match {
+            case None => null
+            case _    => x.get("logContent").get.asInstanceOf[String]
+          }
+        }
+
+        if (logContent != null) { //日志体解析
+          if (logContent.startsWith("--->") && !logContent.startsWith("---> END")) com.hzcard.adviser.Main.RequestStart(requestResponseKey, startTime, logContent.split(" ")(1), logContent.split(" ")(2))
+          else if (logContent.indexOf(":") > 0 && (logContent.startsWith("x-event-id") || logContent.startsWith("X-Event-Id"))) com.hzcard.adviser.Main.EventID(requestResponseKey, logContent.split(":")(1).trim())
+          else if (logContent.indexOf(":") > 0 && (logContent.startsWith("x-event-type") || logContent.startsWith("X-Event-Type"))) com.hzcard.adviser.Main.EventType(requestResponseKey, logContent.split(":")(1).trim())
+          else if (logContent.indexOf(":") > 0 && (logContent.startsWith("x-event-code") || logContent.startsWith("X-Event-Code"))) com.hzcard.adviser.Main.EventCode(requestResponseKey, logContent.split(":")(1).trim())
+          else if (logContent.indexOf(":") > 0 && (logContent.startsWith("x-event-platform") || logContent.startsWith("X-Event-Platform"))) com.hzcard.adviser.Main.EventTypePlatform(requestResponseKey, logContent.split(":")(1).trim())
+          else if (logContent.indexOf(":") > 0 && (logContent.startsWith("x-event-sequence") || logContent.startsWith("X-Event-Sequence"))) com.hzcard.adviser.Main.EventRequestSequence(requestResponseKey, logContent.split(":")(1).trim())
+          else if (logContent.startsWith("{")) com.hzcard.adviser.Main.EventHttpBody(requestResponseKey, startTime, logContent) //以json开始的标识{作为判断是否是事件体
+          else if (logContent.startsWith("--->") && logContent.startsWith("---> END")) com.hzcard.adviser.Main.RequestEnd(requestResponseKey, startTime)
+          else if (logContent.startsWith("<---") && !logContent.startsWith("<--- END")) {
+            val httpResponseSplits = logContent.split(" ")
+            com.hzcard.adviser.Main.ResponseStart(requestResponseKey, httpResponseSplits.takeRight(1)(0).substring(1, httpResponseSplits.takeRight(1)(0).indexOf("m")).toInt, httpResponseSplits(2))
+          } else if (logContent.startsWith("<---") && logContent.startsWith("<--- END"))
+            com.hzcard.adviser.Main.ResponseEnd(requestResponseKey, startTime)
+          else
+            com.hzcard.adviser.Main.NoVialbleLog(requestResponseKey)
+        } else
+          com.hzcard.adviser.Main.NoVialbleLog(requestResponseKey)
+      }).collect.foreach { x => myVectorAcc.add(x) }
+      val eventEnds = myVectorAcc.value.values().
+        toArray(new Array[EventEntity](myVectorAcc.value.values().size())).filter { x => x.startTime != null }.filter { x => x.endTime != null }.sorted
+      EsSpark.saveToEs(sc.makeRDD(eventEnds.toSeq), "eventflow/firststage")
+      EsSpark.saveToEs(sc.makeRDD(Seq(BusinessRecoder(businessId.getOrElse(UUID.randomUUID().toString()), eventEnds.takeRight(1)(0).endTime, "eventFirstStage"))), "feiginclient/dealedrecod", Map("es.mapping.id" -> "id"))
+    } catch {
+      case _: Throwable =>
+    } finally {
+      myVectorAcc.reset();
+    }
+  }
+  
+}
+

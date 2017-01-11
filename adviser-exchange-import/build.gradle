@@ -1,0 +1,40 @@
+dependencies {
+	compile 'redis.clients:jedis:2.8.2'
+	compile 'mysql:mysql-connector-java:5.1.38'
+	compile group: 'org.apache.spark', name: 'spark-sql_2.11', version: '2.0.2'
+}
+
+
+task copyJars(type:Copy) {
+  from configurations.compile
+  into 'dist'
+}
+
+jar {
+    manifest {
+        attributes 'Implementation-Title': 'Gradle Jar File Example',
+        	'Implementation-Version': version,
+        	'Main-Class': 'com.hzcard.adviser.ExchangeImport',
+        	'Class-Path': configurations.runtime.files.collect { "$it.name" }.join(' ')
+    }
+}
+
+
+uploadArchives {
+    repositories {
+       mavenDeployer{
+       	repository(url: "http://192.168.102.206:8900/nexus/content/repositories/releases"){
+       		authentication(userName: "admin", password:"admin123")
+       	}
+       	snapshotRepository(
+        url: "http://192.168.102.206:8900/nexus/content/repositories/snapshots") {
+          authentication(userName: "admin", password:"admin123")
+      }
+       	pom.project {
+        	groupId 'com.hzcard.adviser'
+        	artifactId 'adviser-exchange-import'
+        	packaging 'jar'
+         }
+       }
+    }
+}

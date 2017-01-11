@@ -1,0 +1,133 @@
+package com.hzcard.adviser
+
+import com.hzcard.adviser.Main.RequestStart
+import com.hzcard.adviser.Main.EventID
+import com.hzcard.adviser.Main.EventType
+import com.hzcard.adviser.Main.EventTypePlatform
+import com.hzcard.adviser.Main.EventRequestSequence
+import com.hzcard.adviser.Main.EventHttpBody
+import com.hzcard.adviser.Main.RequestEnd
+import com.hzcard.adviser.Main.ResponseStart
+import com.hzcard.adviser.Main.ResponseEnd
+import java.util.Date
+import scala.beans.BeanProperty
+import com.hzcard.adviser.Main.EventComponent
+import com.hzcard.adviser.Main.EventCode
+import scala.collection.mutable.ArrayBuffer
+import java.io.Serializable
+import com.fasterxml.jackson.annotation.JsonIgnore
+import com.fasterxml.jackson.annotation.JsonFormat
+
+object EventEntity{
+  def apply(eventCompent: EventComponent)={
+    val env=new EventEntity(eventCompent)
+    env.mergerEvent()
+  }
+}
+
+class EventEntity private (@JsonIgnore val eventCompent: EventComponent) extends Serializable {
+
+  def requesResponseKey: String = { eventCompent.getRequesResponseKey }
+
+  @JsonIgnore
+  private var bodyTime: Date = null
+
+  @JsonIgnore
+  private val mergedArray = new ArrayBuffer[EventComponent]
+  
+  @BeanProperty
+  @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS")
+  var startTime: Date = _
+
+  @BeanProperty
+  var method: String = _
+
+  @BeanProperty
+  var url: String = _
+
+  @BeanProperty
+  var eventId: String = _
+
+  @BeanProperty
+  var eventType: String = _
+
+  @BeanProperty
+  var eventCode: String = _
+
+  @BeanProperty
+  var eventPlatForm: String = _
+
+  @BeanProperty
+  var eventSequence: String = _
+
+  @BeanProperty
+  var requestBody: String = _
+
+  @BeanProperty
+  @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS")
+  var requestEndTime: Date = _
+
+  @BeanProperty
+  var responeBody: String = _
+
+  @BeanProperty
+  var httpStatus: String = _
+
+  @BeanProperty
+  var durition: Int = 0
+
+  @BeanProperty
+  @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS")
+  var endTime: Date = null
+
+  @JsonIgnore
+  def nothingToDo() = {}
+
+  @JsonIgnore
+  def mergerEventEntity(other: EventEntity) {
+    for (o <- other.mergedArray)
+      this.mergerEvent(o)
+  }
+  
+  @JsonIgnore
+  private def mergerEvent() :EventEntity={
+    this.mergerEvent(this.eventCompent)
+  }
+
+  @JsonIgnore
+  def mergerEvent(inEvn: EventComponent) ={
+    mergedArray += inEvn
+    inEvn match {
+      case x: RequestStart => {
+        this.startTime = x.startTime
+        this.method = x.method
+        this.url = x.url
+      }
+      case x: EventID              => this.eventId = x.id
+      case x: EventType            => this.eventType = x.eventType
+      case x: EventCode            => this.eventCode = x.code
+      case x: EventTypePlatform    => this.eventPlatForm = x.platForm
+      case x: EventRequestSequence => this.eventSequence = x.sequence
+      case x: EventHttpBody => {
+        if (this.bodyTime == null)
+          this.responeBody = x.body
+        else if (x.time.before(this.bodyTime)) //请求体后
+          this.requestBody = x.body
+        else if(x.time.after(this.bodyTime)){ //请求体前，交换
+          this.requestBody = this.responeBody
+          this.responeBody = x.body
+        }
+        this.bodyTime = x.time
+      }
+      case x: RequestEnd => this.requestEndTime = x.requestEndTime
+      case x: ResponseStart => {
+        this.durition = x.durition
+        this.httpStatus = x.httpStatus
+      }
+      case x: ResponseEnd => this.endTime = x.endTime
+      case _              =>
+    }
+    this
+  }
+
+}
