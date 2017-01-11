@@ -34,31 +34,6 @@ object OrignToEs {
   def main(args: Array[String]): Unit = {
     if (args.length == 0)
       throw new IllegalArgumentException("Not enough arguments: missing args name.")
-    //    val kafkaParams = Map[String, Object](
-    //      "bootstrap.servers" -> "172.16.7.1:9092,172.16.7.2:9092,172.16.7.3:9092",
-    //      "key.deserializer" -> classOf[StringDeserializer],
-    //      "value.deserializer" -> classOf[StringDeserializer],
-    //      "group.id" -> "example",
-    //      "auto.offset.reset" -> "latest",
-    //      "enable.auto.commit" -> (false: java.lang.Boolean))
-    //    val conf = new SparkConf().setMaster("spark://172.16.16.1:7077").setAppName("OrignToEs")
-    //  conf.set("es.nodes", "172.16.16.4:9200")
-    //  conf.set("spark.cores.max", "4")
-    //  conf.set("spark.executor.memory", "5g")
-    //  val kafkaParams = Map[String, Object](
-    //    "bootstrap.servers" -> "192.168.102.164:9092",
-    //    "key.deserializer" -> classOf[StringDeserializer],
-    //    "value.deserializer" -> classOf[StringDeserializer],
-    //    "group.id" -> "example",
-    //    "auto.offset.reset" -> "latest",
-    //    "enable.auto.commit" -> (true: java.lang.Boolean))
-    //
-    //  val conf = new SparkConf().setAppName("OrignToEs")
-    //  conf.set("es.nodes", "192.168.102.165")
-    //  conf.set("es.port", "9200")
-    //  conf.set("es.net.http.auth.user","elastic");
-    //  conf.set("es.net.http.auth.pass","elastic");
-    
     val conf = new SparkConf().setAppName("OrignToEs")
     conf.set("es.index.auto.create", "true")
     conf.set("es.index.read.missing.as.empty", "yes")

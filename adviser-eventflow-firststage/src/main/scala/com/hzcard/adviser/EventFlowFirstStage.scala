@@ -50,16 +50,6 @@ object EventFlowFirstStage {
     }
     if (conf.get("es.nodes") == null || conf.get("es.nodes").trim().length() == 0)
       throw new IllegalArgumentException("Not enough arguments es.nodes: must be setting.")
-
-    //    conf.set("es.nodes", "192.168.102.165:9200")
-    //    conf.set("es.net.http.auth.user", "elastic");
-    //    conf.set("es.net.http.auth.pass", "elastic");
-    //  conf.set("es.nodes", "172.16.16.4:9200")
-    //  conf.set("spark.cores.max", "5")
-    //  conf.set("spark.executor.memory", "5g")
-
-    //    conf.set("es.nodes", "172.16.48.4:9200")      //pre
-
     conf.set("es.index.read.missing.as.empty", "yes")
     conf.set("es.index.auto.create", "true")
     conf.set("spark.rpc.message.maxSize", "512")
