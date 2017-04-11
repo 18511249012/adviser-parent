@@ -17,3 +17,5 @@ include 'services:webservice'
 */
 include 'adviser-orign-toes','adviser-eventflow-firststage','adviser-exchange-import'
 rootProject.name = 'hzcard-adviser'
+include 'adviser-crm-import'
+
