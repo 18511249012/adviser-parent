@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Implementation-Title: Gradle Jar File Example
+Implementation-Version: 0.0.1.SNAPSHOT
+Main-Class: com.hzcard.adviser.OrignToEs
+
